@@ -1,17 +1,154 @@
 @import "tailwindcss";
 
+@layer components {
+  .home-page {
+    @apply relative min-h-screen overflow-hidden bg-black text-white;
+  }
+
+  .home-content {
+    @apply relative z-10 pt-24 pb-12;
+  }
+
+  .home-header {
+    @apply flex min-h-[260px] justify-center;
+  }
+
+  .home-title {
+    @apply text-6xl md:text-8xl font-black tracking-tight;
+  }
+
+  .home-message {
+    @apply text-center text-white/70;
+  }
+
+  .home-error {
+    @apply text-center text-red-400;
+  }
+
+  .article-grid {
+    @apply grid grid-cols-1 md:grid-cols-4 lg:grid-cols-6 auto-rows-[230px] gap-6;
+  }
+
+.article-card {
+  @apply cursor-pointer overflow-hidden rounded-3xl border border-white/10 bg-white/10 backdrop-blur-xl shadow-2xl hover:bg-white/15 transition flex flex-col;
+}
+
+  .article-image {
+    @apply w-full object-cover;
+  }
+
+  .article-body {
+    @apply flex flex-1 flex-col p-1;
+  }
+
+  .article-meta-row {
+    @apply mb-3 flex items-center justify-between;
+  }
+
+  .article-source {
+    @apply text-[10px] uppercase tracking-[0.25em] text-white/50;
+  }
+
+  .article-number {
+    @apply text-[10px] uppercase text-white/30;
+  }
+
+  .article-title {
+    @apply mb-3 font-bold leading-tight group-hover:underline;
+  }
+
+  .article-summary {
+    @apply text-sm leading-snug text-white/60 line-clamp-4;
+  }
+
+  .form-page {
+    @apply relative min-h-screen overflow-hidden bg-black text-white;
+  }
+
+  .default-bg {
+    @apply fixed inset-0 bg-cover bg-center scale-110 blur-sm opacity-80;
+    background-image: url("https://images.unsplash.com/photo-1776334745897-02b3d577bac8?q=80&w=1935&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D");
+  }
+
+  .default-overlay {
+    @apply fixed inset-0 bg-black/40;
+  }
+
+  .form-content {
+    @apply relative z-10 flex min-h-screen flex-col px-6 pt-20 pb-12;
+  }
+
+  .form-header {
+    @apply flex justify-center text-center;
+  }
+
+  .form-title {
+    @apply text-6xl md:text-8xl font-black tracking-tight;
+  }
+
+  .form-center {
+    @apply flex flex-1 items-center justify-center;
+  }
+
+  .form-grid {
+    @apply grid w-full max-w-6xl grid-cols-1 gap-8 md:grid-cols-2 place-items-center;
+  }
+
+  .form-form {
+    @apply w-full min-h-[360px] md:w-[500px] border border-white/10 bg-white/10 backdrop-blur-xl shadow-md rounded px-8 pt-14 pb-10 flex flex-col gap-6;
+  }
+
+  .form-form-title {
+    @apply text-4xl font-black tracking-tight mb-1;
+  }
+
+  .form-field {
+    @apply flex flex-col gap-2;
+  }
+
+  .form-label {
+    @apply block text-white text-xl font-bold;
+  }
+
+  .form-input {
+    @apply w-full max-w-[320px] rounded border border-white/70 bg-black/20 py-2 px-3 text-xl text-white outline-none;
+  }
+
+  .form-input:focus {
+    @apply border-white ring-2 ring-white/30;
+  }
+
+  .form-error {
+    @apply text-red-500 text-xs italic;
+  }
+
+  .form-button-group {
+    @apply flex flex-col gap-6;
+  }
+
+  .form-button {
+    @apply w-full max-w-[320px] bg-black hover:bg-neutral-900 text-white text-2xl font-bold py-5 px-14 rounded-xl border border-white/20 transition;
+  }
+}
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
 html {
   height: 100%;
+  color-scheme: light;
 }
 
 html,
 body {
   max-width: 100vw;
+  min-height: 100%;
   overflow-x: hidden;
 }
 
 body {
-  min-height: 100%;
   display: flex;
   flex-direction: column;
   color: var(--foreground);
@@ -32,7 +169,17 @@ a {
   text-decoration: none;
 }
 
+button,
+input {
+  font: inherit;
+}
+
 @media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #ededed;
+  }
+
   html {
     color-scheme: dark;
   }
