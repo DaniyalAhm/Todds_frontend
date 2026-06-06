@@ -10,7 +10,7 @@ export default function Auth(){
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("")
   const [name, setName] = useState("");
-  const [password, setPass] = useState(null)
+  const [password, setPass] = useState('')
   const [register_mode, setMode] = useState(null)
 
  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -30,6 +30,8 @@ export default function Auth(){
           error.response?.data?.details ||
           "Sign in failed"
       );
+        console.error("Full Axios error:", error);
+        console.error("Backend response:", error.response?.data);
     }
   };
 
@@ -86,6 +88,7 @@ export default function Auth(){
             </label>
             <input className="form-input" id="login-username" type="text"
 
+              value={username}
               onChange={(e) => setUsername(e.target.value)}
                 />
           </div>
@@ -98,6 +101,7 @@ export default function Auth(){
             </label>
             <input className="form-input" id="login-password" type="password" 
 
+              value={password}
               onChange={(e) => setPass(e.target.value)}
 
                 />
@@ -143,7 +147,7 @@ export default function Auth(){
             <input className="form-input"
             value={email}
 
-                  id="login-username" type="text"
+                  id="signup_Email-" type="text"
 
               onChange={(e) => setEmail(e.target.value)}
                 />
@@ -157,14 +161,14 @@ export default function Auth(){
 
             value={signupUsername}
 
-                  className="form-input" id="login-username" type="text"
+                  className="form-input" id="signup-username" type="text"
 
               onChange={(e) => setSignupUsername(e.target.value)}
                 />
           </div>
 
           <div className="form-field">
-            <label className="form-label" htmlFor="login-password">
+            <label className="form-label" htmlFor="signup-password">
 
               Password
             </label>
@@ -172,7 +176,7 @@ export default function Auth(){
 
             value={signupPassword}
 
-                  className="form-input" id="login-password" type="password" 
+                  className="form-input" id="signup-password" type="password" 
 
               onChange={(e) => setSignupPassword(e.target.value)}
                 />

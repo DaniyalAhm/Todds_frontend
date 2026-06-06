@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-
+import { useRouter } from "next/navigation";
 type Article = {
   title: string;
   summary: string;
@@ -14,7 +14,7 @@ export default function Home() {
   const [data, setData] = useState<Article[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
+  const router = useRouter();
   useEffect(() => {
     const fetchApi = async () => {
       try {
@@ -35,41 +35,50 @@ export default function Home() {
     fetchApi();
   }, []);
 
+const handleRefresh = async () => {
+         
+        const response = await axios.post("http://localhost:5000/api/ingest");
+        console.log(response.data)
+        window.location.reload();
+        return; 
+
+    }
+const openArticle = (article: any, index: number) => {
+  if (article.content_status === 'summary_only' || article.content_status ==='failed'){
+    router.push(article.url)
+      return ;
+  }
+
+  sessionStorage.setItem("selectedArticle", JSON.stringify(article));
+  router.push(`/articles/${index}`);
+};
   return (
-    <main className="home-page">
-      <div className="default-bg" />
-      <div className="default-overlay" />
+<main className="home-page">
 
       <section className="home-content">
         <header className="home-header">
           <h1 className="home-title">Todd&apos;s Times</h1>
-        </header>
 
+<button className="refresh-button" onClick={handleRefresh}>
+ Reload Articles 
+</button>
+          <p className="home-message"> To be honest, I have no idea what I am doing :D </p>
+        </header>
         {loading && <p className="home-message">Loading...</p>}
         {error && <p className="home-error">{error}</p>}
 
         <div className="article-grid">
           {data.map((element, index) => {
-            const featured = index === 0;
-            const wide = index === 1 || index === 5;
-            const tall = index === 3;
-
-            const cardSize = featured
-              ? "md:col-span-2 md:row-span-2"
-              : wide
-              ? "md:col-span-2"
-              : tall
-              ? "md:row-span-2"
-              : "";
-
-            const imageSize = featured ? "h-72" : tall ? "h-56" : "h-32";
-            const titleSize = featured ? "text-3xl" : "text-lg";
 
             return (
-              <article key={index} className={`${cardSize} article-card`}>
+            <article
+              key={index}
+              onClick={() => openArticle(element, index)}
+              className={`article-card`}
+            >
                 {element.thumbnail && (
                   <img
-                    className={`article-image ${imageSize}`}
+                    className={`article-image`}
                     src={element.thumbnail}
                     alt={element.title}
                   />
@@ -81,7 +90,7 @@ export default function Home() {
                     <p className="article-number">{index + 1}</p>
                   </div>
 
-                  <h2 className={`article-title ${titleSize}`}>
+                  <h2 className={'article-title'}>
                     {element.title}
                   </h2>
 
