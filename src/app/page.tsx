@@ -1,106 +1,131 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useState } from "react";
 import axios from "axios";
+
 import { useRouter } from "next/navigation";
-type Article = {
-  title: string;
-  summary: string;
-  source: string;
-  thumbnail?: string;
-};
-
-export default function Home() {
-  const [data, setData] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+export default function Auth(){
+  const [username, setUsername] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState("")
+  const [name, setName] = useState("");
+  const [password, setPass] = useState('')
+  const [register_mode, setMode] = useState(null)
   const router = useRouter();
-  useEffect(() => {
-    const fetchApi = async () => {
-      try {
-        setLoading(true);
+ const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-        const response = await axios.get("http://localhost:5000/api_fetch");
-        console.log("GET Success:", response.data);
-
-        setData(response.data);
-      } catch (err) {
-        setError("Failed to fetch data. Check the endpoint or API status.");
-        console.error("GET Error:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchApi();
-  }, []);
-
-const handleRefresh = async () => {
-         
-        const response = await axios.post("http://localhost:5000/api/ingest");
-        console.log(response.data)
-        window.location.reload();
-        return; 
-
+    try {
+      const response = await axios.post(
+  "http://localhost:5000/api/login",
+  { username, password },
+  { withCredentials: true }
+);
+      setMessage(response.data.message || "Signed in successfully");
+      console.log("Login success:", response.data);
+      router.push(`/users/${response.data.user.id}`);
+    } catch (error: any) {
+      setMessage(
+        error.response?.data?.error ||
+          error.response?.data?.details ||
+          "Sign in failed"
+      );
+        console.error("Full Axios error:", error);
+        console.error("Backend response:", error.response?.data);
     }
-const openArticle = (article: any, index: number) => {
-  if (article.content_status === 'summary_only' || article.content_status ==='failed'){
-    router.push(article.url)
-      return ;
-  }
+  };
 
-  sessionStorage.setItem("selectedArticle", JSON.stringify(article));
-  router.push(`/articles/${index}`);
-};
-  return (
-<main className="home-page">
+ const handleSignup = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
 
-      <section className="home-content">
-        <header className="home-header">
-          <h1 className="home-title">Todd&apos;s Times</h1>
+    try {
+      const response = await axios.post("http://localhost:5000/api/users", {
+        name,
+        email,
+        username: signupUsername,
+        password: signupPassword,
+      });
 
-<button className="refresh-button" onClick={handleRefresh}>
- Reload Articles 
-</button>
-          <p className="home-message"> To be honest, I have no idea what I am doing :D </p>
-        </header>
-        {loading && <p className="home-message">Loading...</p>}
-        {error && <p className="home-error">{error}</p>}
+      setMessage(response.data.message || "Account created successfully");
+      console.log("Signup success:", response.data);
+    } catch (error: any) {
+      console.error(error)
+      setMessage(
+        error.response?.data?.error ||
+          error.response?.data?.details ||
+          "Sign up failed"
+      );
+    }
+  };
 
-        <div className="article-grid">
-          {data.map((element, index) => {
 
-            return (
-            <article
-              key={index}
-              onClick={() => openArticle(element, index)}
-              className={`article-card`}
-            >
-                {element.thumbnail && (
-                  <img
-                    className={`article-image`}
-                    src={element.thumbnail}
-                    alt={element.title}
-                  />
-                )}
 
-                <div className="article-body">
-                  <div className="article-meta-row">
-                    <p className="article-source">{element.source}</p>
-                    <p className="article-number">{index + 1}</p>
-                  </div>
+  return(
 
-                  <h2 className={'article-title'}>
-                    {element.title}
-                  </h2>
+<main className="form-page">
+  <div className="default-bg" />
+  <div className="default-overlay" />
 
-                  <p className="article-summary">{element.summary}</p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-    </main>
+  <section className="form-content">
+    <header className="form-header">
+      <h1 className="form-title">Todd&apos;s Time</h1>
+    </header>
+
+    <div className="form-center">
+      <div className="form-grid">
+<form
+  className="form-form"
+  onSubmit={(e) => {
+    setMode(0);
+    handleLogin(e);
+  }}
+>
+          <h1 className="form-form-title">Login</h1>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="login-username">
+              Username
+            </label>
+            <input className="form-input" id="login-username" type="text"
+
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+                />
+          </div>
+
+          <div className="form-field">
+            <label className="form-label" htmlFor="login-password"
+
+                >
+              Password
+            </label>
+            <input className="form-input" id="login-password" type="password" 
+
+              value={password}
+              onChange={(e) => setPass(e.target.value)}
+
+                />
+            <p className="form-error">Please choose a password.</p>
+          </div>
+
+          <div className="form-button-group">
+        <button className="form-button" type="submit">
+              Sign In
+            </button>
+
+            <button className="form-button" type="button">
+              Forgot Password
+            </button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </section>
+</main>
   );
+
+
 }
