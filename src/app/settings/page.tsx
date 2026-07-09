@@ -1,12 +1,17 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from 'axios'
+import API_BASE_URL from "@/lib/api";
+type FeedType = "rss";
+
 type RssFeed = {
   id: string;
   title: string;
   url: string;
+  type?: FeedType;
+  source_kind?: "direct" | "rsshub";
+  route?: string;
 };
 
 type Category = {
@@ -15,25 +20,36 @@ type Category = {
   feeds: RssFeed[];
 };
 
+type UserPayload = {
+  data: {
+    id: number;
+    name?: string;
+    categories: Category[];
+  };
+};
+
 export default function SettingsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
     null
   );
-  const [selectedCategory, setSelectedCategory] =useState(null)
-  const [data, setData]= useState(null)
+  const [selectedCategory, setSelectedCategory] = useState<Category | null>(null)
+  const [data, setData]= useState<UserPayload | null>(null)
   const [error, setError] = useState("");
   const [message, setMessage] = useState("")
   const [newCategory, setNewCategory] = useState("");
   const [newFeedTitle, setNewFeedTitle] = useState("");
   const [newFeedUrl, setNewFeedUrl] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [showRsshub, setShowRsshub] = useState(false);
+  const [rsshubRoute, setRsshubRoute] = useState("");
+  const [rsshubName, setRsshubName] = useState("");
+  const [rsshubResolving, setRsshubResolving] = useState(false);
+  const [rsshubResult, setRsshubResult] = useState<{status?: string; message?: string; url?: string; title?: string; route?: string; source_kind?: "rsshub"} | null>(null);
+  const [rsshubHealth, setRsshubHealth] = useState<string | null>(null);
 
-  const fetchApi = async () => {
+  const fetchApi = useCallback(async () => {
       try {
-        setLoading(true);
-
-        const response = await axios.get("http://localhost:5000/api/get_user/"
+        const response = await axios.get(`${API_BASE_URL}/api/get_user/`
           ,{
 
         withCredentials: true,
@@ -41,20 +57,25 @@ export default function SettingsPage() {
           });
         console.log("GET Success:", response.data);
 
+        const freshCategories: Category[] = response.data.data.categories;
         setData(response.data);
-        setCategories(response.data.data.categories)
+        setCategories(freshCategories);
+        if (selectedCategoryId) {
+          const updated = freshCategories.find((c: Category) => c.id === selectedCategoryId);
+          if (updated) setSelectedCategory(updated);
+        }
       } catch (err) {
         setError("Failed to fetch data. Check the endpoint or API status.");
         console.error("GET Error:", err);
-      } finally {
-        setLoading(false);
       }
-    };
+    }, [selectedCategoryId]);
 
   useEffect(() => {
-
-    fetchApi();
-  }, []);
+    const timer = window.setTimeout(() => {
+      void fetchApi();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchApi]);
 
   const makeId = (value: string) => {
     return value
@@ -67,6 +88,20 @@ export default function SettingsPage() {
 
   const addCategory = async () => {
     const trimmed = newCategory.trim();
+    if (!trimmed) return;
+
+    setMessage("");
+    setError("");
+
+    const alreadyExists = categories.some(
+      (category) => category.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      setError("A category with this name already exists");
+      return;
+    }
+
+    if (!data?.data?.id) return;
 
     const id = `${data.data.id}-${trimmed}-${Date.now()}`
       .toLowerCase()
@@ -77,32 +112,37 @@ export default function SettingsPage() {
       name: trimmed,
       feeds: [],
     };
-    const alreadyExists = categories.items?.some(
-      (category) => category.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (!trimmed || alreadyExists) return;
 
     try {
-      const response = await axios.post("http://localhost:5000/api/add_categories",   { category: category },
+      const response = await axios.post(`${API_BASE_URL}/api/add_categories`,   { category: category },
   { withCredentials: true });
-    console.log(response.data)
+    setMessage(response.data.message || "Category added successfully");
+    setNewCategory("");
     }
-     catch (error: any) {
+     catch (error: unknown) {
+      const errMsg = axios.isAxiosError(error) ? error.response?.data?.error || "Failed to add category" : "Failed to add category";
+      setError(errMsg);
       console.error(error)
-
     }
     fetchApi()
   }
 
 
 
-  const deleteCategory = (categoryId: string) => {
-    setCategories((prev) =>
-      prev.filter((category) => category.id !== categoryId)
-    );
-
-    if (selectedCategoryId === categoryId) {
-      setSelectedCategoryId(null);
+  const deleteCategory = async (categoryId: string) => {
+    setMessage("");
+    setError("");
+    try {
+      await axios.post(`${API_BASE_URL}/api/remove_category`, { category_id: categoryId }, { withCredentials: true });
+      setMessage("Category removed successfully");
+      if (selectedCategoryId === categoryId) {
+        setSelectedCategoryId(null);
+        setSelectedCategory(null);
+      }
+      fetchApi();
+    } catch (error: unknown) {
+      const errMsg = axios.isAxiosError(error) ? error.response?.data?.error || "Failed to remove category" : "Failed to remove category";
+      setError(errMsg);
     }
   };
 
@@ -114,38 +154,106 @@ export default function SettingsPage() {
 
     if (!title || !url) return;
 
+    setMessage("");
+    setError("");
+
     const feed: RssFeed = {
       id: makeId(`${title}-${Date.now()}`),
       title,
       url,
+      type: "rss",
+      source_kind: "direct",
     };
 
     try {
-      const response = await axios.post("http://localhost:5000/api/add_feed",   { category_id: selectedCategoryId, feed:feed },
+      const response = await axios.post(`${API_BASE_URL}/api/add_feed`,   { category_id: selectedCategoryId, feed:feed },
   { withCredentials: true });
-    console.log(response.data)
-
-selectedCategory.feeds = [feed, ...selectedCategory.feeds];
+    setMessage(response.data.message || "Feed added successfully");
+    setNewFeedTitle("");
+    setNewFeedUrl("");
+    fetchApi();
     }
-     catch (error: any) {
+     catch (error: unknown) {
+      const errMsg = axios.isAxiosError(error) ? error.response?.data?.error || "Failed to add feed" : "Failed to add feed";
+      setError(errMsg);
       console.error(error)
-
     }
 
   };
 
-  const removeFeedFromCategory  = async (categoryId: string, feed: RssFeed) => {
+  const checkRsshubHealth = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/rsshub/health`);
+      setRsshubHealth(response.data.status === "ok" ? "Online" : "Error");
+    } catch {
+      setRsshubHealth("Unreachable");
+    }
+  };
+
+  useEffect(() => {
+    if (showRsshub && !rsshubHealth) {
+      const timer = window.setTimeout(() => {
+        void checkRsshubHealth();
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [showRsshub, rsshubHealth]);
+
+  const resolveRsshubRoute = async () => {
+    const route = rsshubRoute.trim();
+    if (!route) return;
+
+    setRsshubResolving(true);
+    setRsshubResult(null);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/rsshub/resolve`, { route, name: rsshubName.trim() });
+      setRsshubResult(response.data);
+    } catch {
+      setRsshubResult({ status: "error", message: "Could not reach RSSHUB" });
+    } finally {
+      setRsshubResolving(false);
+    }
+  };
+
+  const addRsshubRouteAsFeed = async () => {
+    if (!selectedCategoryId || !rsshubResult || rsshubResult.status !== "ok" || !rsshubResult.url) return;
+
+    const title = rsshubName.trim() || rsshubResult.title || rsshubRoute.replace(/^\/+/, "").replace(/[-/]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const feed: RssFeed = {
+      id: makeId(`${title}-${Date.now()}`),
+      title,
+      url: rsshubResult.url,
+      type: "rss",
+      source_kind: "rsshub",
+      route: rsshubResult.route || rsshubRoute.trim().replace(/^\/+/, ""),
+    };
 
     try {
-      const response = await axios.post("http://localhost:5000/api/remove_feed",   { category_id: categoryId, feed:feed },
-  { withCredentials: true });
-    console.log(response.data)
-
-    selectedCategory.feeds = list.filter(item => item !== feed);
+      await axios.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed }, { withCredentials: true });
+      setMessage("Feed added successfully");
+      setRsshubName("");
+      setRsshubRoute("");
+      setRsshubResult(null);
+      fetchApi();
+    } catch (error: unknown) {
+      const errMsg = axios.isAxiosError(error) ? error.response?.data?.error || "Failed to add feed" : "Failed to add feed";
+      setError(errMsg);
     }
-     catch (error: any) {
-      console.error(error)
+  };
 
+  const removeFeedFromCategory  = async (categoryId: string, feed: RssFeed) => {
+    setMessage("");
+    setError("");
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/remove_feed`,   { category_id: categoryId, feed:feed },
+  { withCredentials: true });
+    setMessage(response.data.message || "Feed removed successfully");
+    }
+     catch (error: unknown) {
+      const errMsg = axios.isAxiosError(error) ? error.response?.data?.error || "Failed to remove feed" : "Failed to remove feed";
+      setError(errMsg);
+      console.error(error)
     }
     fetchApi();
   };
@@ -161,13 +269,23 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
           <div>
             <h1 className="text-4xl font-black tracking-tight">Settings</h1>
             <p className="mt-2 text-white/60">
-              Create your own categories and control which RSS feeds belong to
+              Create your own categories and control which feeds belong to
               them.
             </p>
           </div>
 
         </header>
 
+        {message && (
+          <div className="mb-6 rounded-2xl border border-green-500/20 bg-green-500/10 px-5 py-3 text-sm text-green-300">
+            {message}
+          </div>
+        )}
+        {error && (
+          <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-sm text-red-300">
+            {error}
+          </div>
+        )}
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[360px_1fr]">
           <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl">
@@ -189,10 +307,7 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
                 className="rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
               />
 
-              <button
-                onClick={addCategory}
-                className="rounded-2xl bg-white px-6 py-3 font-bold text-black hover:bg-white/80"
-              >
+              <button onClick={addCategory} className="btn btn-solid-light">
                 Add Category
               </button>
             </div>
@@ -227,7 +342,7 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
                             : "text-white/40"
                         }`}
                       >
-                        {category.feeds?.length} RSS feed
+                        {category.feeds?.length} feed
                         {category.feeds?.length === 1 ? "" : "s"}
                       </p>
                     </div>
@@ -261,19 +376,16 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
                     </p>
                   </div>
 
-                  <button
-                    onClick={() => deleteCategory(selectedCategory.id)}
-                    className="w-fit rounded-full border border-red-300/20 px-4 py-2 text-sm text-red-300 hover:bg-red-300 hover:text-black"
-                  >
+                  <button onClick={() => void deleteCategory(selectedCategory.id)} className="btn btn-danger-ghost">
                     Delete Category
                   </button>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
-                  <h3 className="mb-4 text-lg font-semibold">Add RSS Feed</h3>
+                  <h3 className="mb-4 text-lg font-semibold">Add Feed Source</h3>
 
                   <div className="grid gap-3">
-                    <input
+                      <input
                       value={newFeedTitle}
                       onChange={(e) => setNewFeedTitle(e.target.value)}
                       placeholder="Feed title, example: NYT Technology"
@@ -290,21 +402,96 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
                       className="rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
                     />
 
-                    <button
-                      onClick={addFeedToCategory}
-                      className="rounded-2xl bg-white px-6 py-3 font-bold text-black hover:bg-white/80"
-                    >
-                      Add Feed to {selectedCategory.name}
+                    <button onClick={addFeedToCategory} className="btn btn-solid-light">
+                      Add RSS to {selectedCategory.name}
                     </button>
                   </div>
                 </div>
 
+                <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-5">
+                  <button
+                    onClick={() => setShowRsshub(!showRsshub)}
+                    className="flex w-full items-center justify-between"
+                  >
+                    <h3 className="text-lg font-semibold">RSSHUB Feeds</h3>
+                    <span className="text-white/50">
+                      {showRsshub ? "▲" : "▼"}
+                      {rsshubHealth && ` (${rsshubHealth})`}
+                    </span>
+                  </button>
+
+                  {showRsshub && (
+                    <div className="mt-4">
+                      <p className="mb-3 text-sm text-white/50">
+                        RSSHUB generates RSS feeds from websites that don&apos;t have native RSS.
+                        Enter a route path below to resolve and add it as a feed.
+                      </p>
+
+                      <div className="flex gap-2">
+                        <input
+                          value={rsshubName}
+                          onChange={(e) => setRsshubName(e.target.value)}
+                          placeholder="Feed name, example: NYT World via RSSHub"
+                          className="flex-1 rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
+                        />
+                      </div>
+
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          value={rsshubRoute}
+                          onChange={(e) => setRsshubRoute(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") resolveRsshubRoute(); }}
+                          placeholder="/nytimes, /bbc, /hackernews"
+                          className="flex-1 rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
+                        />
+                          <button onClick={resolveRsshubRoute} disabled={rsshubResolving} className="btn btn-solid-light">
+                            {rsshubResolving ? "..." : "Resolve"}
+                          </button>
+                      </div>
+
+                      {rsshubResult && (
+                        <div className={`mt-3 rounded-xl border p-4 ${
+                          rsshubResult.status === "ok"
+                            ? "border-green-500/20 bg-green-500/10"
+                            : "border-red-500/20 bg-red-500/10"
+                        }`}>
+                          {rsshubResult.status === "ok" ? (
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="font-medium text-green-300">{rsshubResult.title}</p>
+                                {rsshubResult.route && (
+                                  <p className="text-xs text-green-300/60">Route: /{rsshubResult.route}</p>
+                                )}
+                                <p className="text-xs text-green-300/60">{rsshubResult.url}</p>
+                              </div>
+                              <button onClick={addRsshubRouteAsFeed} className="btn btn-solid-light text-xs px-4 py-1.5">
+                                Add Feed
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-red-300">
+                              {rsshubResult.message || "Route not found"}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <p className="mt-4 text-xs text-white/30">
+                        Discover all available routes at{" "}
+                        <a href="https://docs.rsshub.app" target="_blank" rel="noopener noreferrer" className="text-white/50 underline">
+                          docs.rsshub.app
+                        </a>
+                      </p>
+                    </div>
+                  )}
+                </div>
+
                 <div className="mt-8">
-                  <h3 className="mb-4 text-lg font-semibold">RSS Feeds</h3>
+                  <h3 className="mb-4 text-lg font-semibold">Feed Sources</h3>
 
                   {selectedCategory.feeds.length === 0 && (
                     <div className="rounded-2xl border border-dashed border-white/15 bg-black/30 p-6 text-sm text-white/50">
-                      This category has no RSS feeds yet.
+                      This category has no feed sources yet.
                     </div>
                   )}
 
@@ -316,20 +503,16 @@ selectedCategory.feeds = [feed, ...selectedCategory.feeds];
                       >
                         <div className="min-w-0">
                           <p className="font-semibold">{feed.title}</p>
+                          <p className="mt-1 text-[0.7rem] font-bold uppercase tracking-wide text-white/35">
+                              {feed.source_kind === "rsshub" ? "RSSHUB" : "RSS"}
+                          </p>
+                          {feed.route && <p className="truncate text-xs text-white/30">/{feed.route}</p>}
                           <p className="truncate text-xs text-white/40">
                             {feed.url}
                           </p>
                         </div>
 
-                        <button
-                          onClick={() =>
-                            removeFeedFromCategory(
-                              selectedCategory.id,
-                              feed
-                            )
-                          }
-                          className="w-fit rounded-full border border-red-300/20 px-4 py-2 text-sm text-red-300 hover:bg-red-300 hover:text-black"
-                        >
+                        <button onClick={() => removeFeedFromCategory(selectedCategory.id, feed)} className="btn btn-danger-ghost">
                           Remove
                         </button>
                       </div>

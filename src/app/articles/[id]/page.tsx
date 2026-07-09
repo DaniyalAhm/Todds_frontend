@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import API_BASE_URL from "@/lib/api";
 
 type Article = {
   title: string;
   summary: string;
   source: string;
+  content?: string[];
   thumbnail?: string;
+  url?: string;
   link?: string;
 };
 
@@ -23,7 +26,7 @@ export default function ArticlePage() {
   useEffect(() => {
     const fetchArticle = async () => {
       try {
-        const response = await axios.get("http://localhost:5000/api_fetch");
+        const response = await axios.get(`${API_BASE_URL}/api_fetch`);
 
         const selectedArticle = response.data[id];
 
@@ -45,14 +48,11 @@ export default function ArticlePage() {
   if (error) {
     return (
       <main className="home-page">
-
-
-          <button href="/" className="refresh-button">
+        <div className="home-content" style={{ padding: '2rem 1rem' }}>
+          <Link href="/" className="refresh-button">
             ← Back home
-          </button>
-        <div className="default-bg" />
-        <div className="default-overlay" />
-
+          </Link>
+        </div>
       </main>
     );
   }
@@ -60,11 +60,8 @@ export default function ArticlePage() {
   if (!article) {
     return (
       <main className="home-page">
-        <div className="default-bg" />
-        <div className="default-overlay" />
-
         <section className="home-content">
-          <p className="home-message">Loading article...</p>
+          <p className="home-message" style={{ marginTop: '2rem' }}>Loading article...</p>
         </section>
       </main>
     );
@@ -72,8 +69,7 @@ export default function ArticlePage() {
 
   return (
     <main className="home-page">
-      <div className="default-bg" />
-      <div className="default-overlay" />
+
 
       <section className="article-page-content">
         <Link href="/" className="article-source">
@@ -92,14 +88,13 @@ export default function ArticlePage() {
           />
         )}
 
-    <div className="article-page-body">
-      {(article.content ).map(
-        (paragraph, index) => (
-<p className="article-page-paragraph" key={index}>{paragraph}</p>
-
-        )
-      )}
-    </div>
+        <div className="article-page-body">
+          {(Array.isArray(article.content) ? article.content : []).map(
+            (paragraph, index) => (
+              <p className="article-page-paragraph" key={index}>{paragraph}</p>
+            )
+          )}
+        </div>
 
         {article.link && (
           <a
