@@ -25,6 +25,9 @@ type IngestJobState = {
     enriched_count?: number;
     enrich_failed_count?: number;
   } | null;
+  progress_current?: number;
+  progress_total?: number;
+  progress_message?: string;
 };
 
 type RssFeed = {
@@ -88,32 +91,47 @@ export default function Home() {
   const [parseError, setParseError] = useState("");
   const [message, setMessage] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [progressCurrent, setProgressCurrent] = useState(0);
+  const [progressTotal, setProgressTotal] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
 
-  const loadIngestStatus = async (userCategories: Category[] = categories, categoryId: string = selectedCategoryId) => {
-    const response = await apiClient.get<IngestJobState>(`${API_BASE_URL}/api/ingest/status`);
-    const status = response.data;
+  const connectProgressSSE = () => {
+    const token = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("session="))
+      ?.split("=")[1];
 
-    if (status.status === "running") {
-      setRefreshing(true);
-      setMessage(status.message || "Article refresh started. This can take a while.");
-      return status;
-    }
+    const url = `${API_BASE_URL}/api/ingest/progress`;
+    const es = new EventSource(url, { withCredentials: true });
 
-    setRefreshing(false);
+    es.onmessage = (event) => {
+      const state = JSON.parse(event.data);
+      setRefreshing(state.status === "running");
+      setProgressCurrent(state.progress_current || 0);
+      setProgressTotal(state.progress_total || 0);
+      setProgressMessage(state.progress_message || "");
 
-    if (status.status === "completed") {
-      setMessage(status.message || "Articles refreshed");
-      setError("");
-      await loadArticles(categoryId, userCategories);
-      return status;
-    }
+      if (state.status === "running") {
+        setMessage(state.progress_message || state.message || "");
+      } else if (state.status === "completed") {
+        setMessage(state.message || "Articles refreshed");
+        setError("");
+        es.close();
+        loadArticles(selectedCategoryId, categories);
+      } else if (state.status === "failed") {
+        setError(state.error || state.message || "Failed to refresh articles");
+        es.close();
+      } else if (state.status === "idle") {
+        es.close();
+      }
+    };
 
-    if (status.status === "failed") {
-      setError(status.error || status.message || "Failed to refresh articles");
-      return status;
-    }
+    es.onerror = () => {
+      es.close();
+      setRefreshing(false);
+    };
 
-    return status;
+    return es;
   };
 
   const toArticleWithFeed = (article: Article, userCategories: Category[] = []): Article => {
@@ -192,7 +210,10 @@ export default function Home() {
           const statusResponse = await apiClient.get<IngestJobState>(`${API_BASE_URL}/api/ingest/status`);
           if (!cancelled && statusResponse.data.status === "running") {
             setRefreshing(true);
-            setMessage(statusResponse.data.message || "Article refresh started. This can take a while.");
+            setProgressCurrent(statusResponse.data.progress_current || 0);
+            setProgressTotal(statusResponse.data.progress_total || 0);
+            setProgressMessage(statusResponse.data.progress_message || "");
+            setMessage(statusResponse.data.progress_message || statusResponse.data.message || "Refreshing articles...");
           }
         } catch (statusErr) {
           console.error("Ingest status error:", statusErr);
@@ -225,14 +246,12 @@ export default function Home() {
       return;
     }
 
-    const intervalId = window.setInterval(() => {
-      void loadIngestStatus(categories, selectedCategoryId);
-    }, 3000);
+    const es = connectProgressSSE();
 
     return () => {
-      window.clearInterval(intervalId);
+      es.close();
     };
-  }, [refreshing, categories, selectedCategoryId]);
+  }, [refreshing]);
 
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategoryId(categoryId);
@@ -242,19 +261,26 @@ export default function Home() {
 const handleRefresh = async () => {
   setMessage("");
   setError("");
+  setProgressCurrent(0);
+  setProgressTotal(0);
+  setProgressMessage("");
 
   try {
     const response = await apiClient.post<IngestJobState>(`${API_BASE_URL}/api/ingest/`, {});
-    setRefreshing(response.data.status === "running");
-    setMessage(response.data.message || "Article refresh started. This can take a while.");
-    if (response.data.status === "completed") {
+    if (response.data.status === "running") {
+      setRefreshing(true);
+      setMessage(response.data.progress_message || response.data.message || "Starting...");
+      setProgressCurrent(response.data.progress_current || 0);
+      setProgressTotal(response.data.progress_total || 0);
+      setProgressMessage(response.data.progress_message || "");
+    } else if (response.data.status === "completed") {
       await loadArticles(selectedCategoryId, categories);
     }
   } catch (err: unknown) {
     if (axios.isAxiosError(err) && err.response?.status === 409) {
       const status = err.response.data as IngestJobState;
       setRefreshing(status.status === "running");
-      setMessage(status.message || "Article refresh started. This can take a while.");
+      setMessage(status.message || "Article refresh is still running...");
       setError("");
       return;
     }
@@ -377,7 +403,23 @@ const openArticle = async (article: Article) => {
         )}
 
         {loading && <p className="home-message">Loading...</p>}
-        {message && <p className="home-message" style={{ color: '#15803d' }}>{message}</p>}
+
+        {refreshing && (
+          <div className="progress-bar">
+            <div className="progress-bar__track">
+              <div
+                className="progress-bar__fill"
+                style={{ width: progressTotal > 0 ? `${Math.round((progressCurrent / progressTotal) * 100)}%` : "0%" }}
+              />
+            </div>
+            <p className="progress-bar__message">
+              {progressMessage || message || "Refreshing articles..."}
+              {progressTotal > 0 && ` (${progressCurrent}/${progressTotal})`}
+            </p>
+          </div>
+        )}
+
+        {!refreshing && message && <p className="home-message" style={{ color: '#15803d' }}>{message}</p>}
         {error && <p className="home-error">{error}</p>}
 
         {!loading && data.length === 0 && !error && (
