@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 
 type AdminOverview = {
@@ -50,6 +50,12 @@ type IngestSchedule = {
   last_run_date?: string | null;
 };
 
+type DefaultCategory = {
+  id: string;
+  name: string;
+  feeds: [];
+};
+
 export default function AdminPage() {
   const router = useRouter();
   const [currentUserPublicId, setCurrentUserPublicId] = useState<string | null>(null);
@@ -59,6 +65,8 @@ export default function AdminPage() {
   const [feeds, setFeeds] = useState<FeedSource[]>([]);
   const [feedRequestLimits, setFeedRequestLimits] = useState<Record<string, string>>({});
   const [schedule, setSchedule] = useState<IngestSchedule>({ enabled: false, time_utc: "08:00", last_run_date: null });
+  const [defaultCategories, setDefaultCategories] = useState<DefaultCategory[]>([]);
+  const [newDefaultCategory, setNewDefaultCategory] = useState("");
   const [error, setError] = useState("");
   const [feedMessage, setFeedMessage] = useState("");
   const [authorized, setAuthorized] = useState(false);
@@ -66,9 +74,7 @@ export default function AdminPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const userResponse = await axios.get(`${API_BASE_URL}/api/get_user/`, {
-          withCredentials: true,
-        });
+        const userResponse = await apiClient.get(`${API_BASE_URL}/api/get_user/`);
         const currentUser = userResponse.data?.data;
         setCurrentUserPublicId(currentUser?.public_id || null);
 
@@ -77,12 +83,13 @@ export default function AdminPage() {
           return;
         }
 
-        const [overviewResponse, usersResponse, logsResponse, feedsResponse, scheduleResponse] = await Promise.all([
-          axios.get(`${API_BASE_URL}/api/admin/overview`, { withCredentials: true }),
-          axios.get(`${API_BASE_URL}/api/admin/users`, { withCredentials: true }),
-          axios.get(`${API_BASE_URL}/api/admin/logs?limit=100`, { withCredentials: true }),
-          axios.get(`${API_BASE_URL}/api/feed_sources`, { withCredentials: true }),
-          axios.get(`${API_BASE_URL}/api/admin/ingest-schedule`, { withCredentials: true }),
+        const [overviewResponse, usersResponse, logsResponse, feedsResponse, scheduleResponse, defaultCategoriesResponse] = await Promise.all([
+          apiClient.get(`${API_BASE_URL}/api/admin/overview`),
+          apiClient.get(`${API_BASE_URL}/api/admin/users`),
+          apiClient.get(`${API_BASE_URL}/api/admin/logs?limit=100`),
+          apiClient.get(`${API_BASE_URL}/api/feed_sources`),
+          apiClient.get(`${API_BASE_URL}/api/admin/ingest-schedule`),
+          apiClient.get(`${API_BASE_URL}/api/admin/default-categories`),
         ]);
         setOverview(overviewResponse.data?.data || null);
         setUsers(usersResponse.data?.data || []);
@@ -95,6 +102,7 @@ export default function AdminPage() {
           )
         );
         setSchedule(scheduleResponse.data?.data || { enabled: false, time_utc: "08:00", last_run_date: null });
+        setDefaultCategories(defaultCategoriesResponse.data?.data || []);
         setAuthorized(true);
       } catch (err) {
         if (axios.isAxiosError(err)) {
@@ -128,11 +136,10 @@ export default function AdminPage() {
     }
 
     try {
-      const response = await axios.post(
+      const response = await apiClient.post(
         `${API_BASE_URL}/api/admin/feed-request-limit`,
-        { url: feed.url, request_limit: requestLimit },
-        { withCredentials: true }
-      );
+          { url: feed.url, request_limit: requestLimit }
+        );
       setFeeds((current) =>
         current.map((item) => (item.url === feed.url ? { ...item, request_limit: requestLimit } : item))
       );
@@ -151,14 +158,13 @@ export default function AdminPage() {
     setError("");
 
     try {
-      const response = await axios.post(
+      const response = await apiClient.post(
         `${API_BASE_URL}/api/admin/ingest-schedule`,
-        {
-          enabled: schedule.enabled,
-          time_utc: schedule.time_utc,
-        },
-        { withCredentials: true }
-      );
+          {
+            enabled: schedule.enabled,
+            time_utc: schedule.time_utc,
+          }
+        );
       setSchedule(response.data?.data || schedule);
       setFeedMessage(response.data?.message || "Ingest schedule updated");
     } catch (err) {
@@ -168,6 +174,47 @@ export default function AdminPage() {
       }
       setError("Failed to update ingest schedule");
     }
+  };
+
+  const makeCategoryId = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+  const saveDefaultCategories = async (categories: DefaultCategory[]) => {
+    setFeedMessage("");
+    setError("");
+
+    try {
+      const response = await apiClient.post(
+        `${API_BASE_URL}/api/admin/default-categories`,
+          { categories }
+        );
+      setDefaultCategories(response.data?.data || categories);
+      setFeedMessage(response.data?.message || "Default categories updated");
+    } catch (err) {
+      if (axios.isAxiosError(err)) {
+        setError(err.response?.data?.error || "Failed to update default categories");
+        return;
+      }
+      setError("Failed to update default categories");
+    }
+  };
+
+  const addDefaultCategory = async () => {
+    const trimmed = newDefaultCategory.trim();
+    if (!trimmed) {
+      return;
+    }
+    const id = makeCategoryId(trimmed);
+    if (defaultCategories.some((category) => category.id === id || category.name.toLowerCase() === trimmed.toLowerCase())) {
+      setError("Default category already exists");
+      return;
+    }
+    await saveDefaultCategories([...defaultCategories, { id, name: trimmed, feeds: [] }]);
+    setNewDefaultCategory("");
+  };
+
+  const removeDefaultCategory = async (categoryId: string) => {
+    await saveDefaultCategories(defaultCategories.filter((category) => category.id !== categoryId));
   };
 
   if (!authorized && !error) {
@@ -227,8 +274,54 @@ export default function AdminPage() {
 
         <section className="admin-panel-card mt-8 p-5">
           <div className="flex items-center justify-between gap-3">
+            <h2 className="text-2xl font-bold">Default Categories</h2>
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Applied to every user server-side</p>
+          </div>
+          <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                type="text"
+                value={newDefaultCategory}
+                onChange={(event) => setNewDefaultCategory(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void addDefaultCategory();
+                  }
+                }}
+                placeholder="Example: Technology"
+                className="w-full rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-white outline-none focus:border-white/60"
+              />
+              <button type="button" onClick={() => void addDefaultCategory()} className="btn btn-ghost-light w-full text-sm sm:w-auto">
+                Add Default
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {defaultCategories.length === 0 && (
+                <p className="text-sm" style={{ color: "var(--muted)" }}>No default categories configured.</p>
+              )}
+              {defaultCategories.map((category) => (
+                <div key={category.id} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2">
+                  <span className="text-sm font-medium">{category.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => void removeDefaultCategory(category.id)}
+                    className="text-xs text-white/60 hover:text-white"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
+            Saving updates current users and becomes the default for newly created users.
+          </p>
+        </section>
+
+        <section className="admin-panel-card mt-8 p-5">
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-2xl font-bold">Automatic RSS Reload</h2>
-            <p className="text-sm" style={{ color: "var(--muted)" }}>UTC daily schedule</p>
+            <p className="text-sm" style={{ color: "var(--muted)" }}>Backend-managed UTC daily schedule</p>
           </div>
           <div className="mt-5 flex flex-col gap-4 rounded-2xl border border-white/10 bg-black/20 p-4 md:flex-row md:items-end">
             <label className="flex items-start gap-3 text-sm text-white/80 sm:items-center">
@@ -258,6 +351,9 @@ export default function AdminPage() {
           </div>
           <p className="mt-3 text-sm" style={{ color: "var(--muted)" }}>
             Last automatic run: {schedule.last_run_date || "Never"}
+          </p>
+          <p className="mt-2 text-sm" style={{ color: "var(--muted)" }}>
+            Reload timing is enforced by the server scheduler, so admins only configure it here.
           </p>
         </section>
 

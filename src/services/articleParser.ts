@@ -1,11 +1,10 @@
-import axios from "axios";
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 
 export type ParsedArticle = {
   url: string;
   title: string;
   author: string;
-  date: string;
+  date: string | number;
   source: string;
   content_text: string;
   content_html: string;
@@ -24,10 +23,10 @@ export type ParsedArticle = {
 };
 
 export async function fetchParsedArticle(url: string): Promise<ParsedArticle> {
-  const response = await axios.post(
+  const response = await apiClient.post(
     `${API_BASE_URL}/api/articles/parse`,
     { url },
-    { withCredentials: true, validateStatus: () => true }
+    { validateStatus: () => true }
   );
   if (response.status >= 400) {
     return {

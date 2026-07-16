@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
-
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : [];
 const nextConfig: NextConfig = {
-  allowedDevOrigins: ['toddheadquarters'],
+  allowedDevOrigins:allowedOrigins,
   skipTrailingSlashRedirect: true,
   async rewrites() {
     return [

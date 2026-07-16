@@ -1,12 +1,31 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import Link from "next/link";
-import API_BASE_URL from "@/lib/api";
+import axios from "axios";
+import apiClient, { API_BASE_URL, refreshCsrfToken } from "@/lib/api";
 import { fetchParsedArticle, ParsedArticle } from "@/services/articleParser";
 import SettingsModal from "@/components/SettingsModal";
 import ThemeToggle from "@/components/ThemeToggle";
+
+type IngestJobStatus = "idle" | "running" | "completed" | "failed";
+
+type IngestJobState = {
+  status: IngestJobStatus;
+  started_at?: string | null;
+  finished_at?: string | null;
+  message?: string;
+  error?: string | null;
+  result?: {
+    message?: string;
+    saved_count?: number;
+    feeds_checked?: number;
+    entries_found?: number;
+    parse_failed_count?: number;
+    enriched_count?: number;
+    enrich_failed_count?: number;
+  } | null;
+};
 
 type RssFeed = {
   id: string;
@@ -40,6 +59,7 @@ type Article = {
   feed_url?: string;
   feed_title?: string;
   author?: string;
+  date?: number;
   thumbnail?: string;
   photos?: string[];
   summary?: string;
@@ -68,6 +88,33 @@ export default function Home() {
   const [parseError, setParseError] = useState("");
   const [message, setMessage] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+
+  const loadIngestStatus = async (userCategories: Category[] = categories, categoryId: string = selectedCategoryId) => {
+    const response = await apiClient.get<IngestJobState>(`${API_BASE_URL}/api/ingest/status`);
+    const status = response.data;
+
+    if (status.status === "running") {
+      setRefreshing(true);
+      setMessage(status.message || "Article refresh started. This can take a while.");
+      return status;
+    }
+
+    setRefreshing(false);
+
+    if (status.status === "completed") {
+      setMessage(status.message || "Articles refreshed");
+      setError("");
+      await loadArticles(categoryId, userCategories);
+      return status;
+    }
+
+    if (status.status === "failed") {
+      setError(status.error || status.message || "Failed to refresh articles");
+      return status;
+    }
+
+    return status;
+  };
 
   const toArticleWithFeed = (article: Article, userCategories: Category[] = []): Article => {
     if (article.feed?.title) {
@@ -108,10 +155,7 @@ export default function Home() {
     try {
       setLoading(true);
       const params = categoryId && categoryId !== "all" ? { category_id: categoryId } : {};
-      const response = await axios.get(`${API_BASE_URL}/api/fetch/`, {
-        params,
-        withCredentials: true,
-      });
+      const response = await apiClient.get(`${API_BASE_URL}/api/fetch/`, { params });
       const articles = Array.isArray(response.data) ? response.data : [];
       setData(articles.map((article) => toArticleWithFeed(article, userCategories)));
     } catch (err) {
@@ -129,9 +173,9 @@ export default function Home() {
       try {
         setLoading(true);
 
-        const userResponse = await axios.get(`${API_BASE_URL}/api/get_user/`, {
-          withCredentials: true,
-        });
+        await refreshCsrfToken();
+
+        const userResponse = await apiClient.get(`${API_BASE_URL}/api/get_user/`);
         if (cancelled) return;
 
         const user: CurrentUser | null = userResponse.data?.data || null;
@@ -139,14 +183,20 @@ export default function Home() {
         setCurrentUser(user);
         setCategories(cats);
 
-        const articleResponse = await axios.get(`${API_BASE_URL}/api/fetch/`, {
-          params: {},
-          withCredentials: true,
-        });
+        const articleResponse = await apiClient.get(`${API_BASE_URL}/api/fetch/`, { params: {} });
         if (cancelled) return;
 
         const articles = Array.isArray(articleResponse.data) ? articleResponse.data : [];
         setData(articles.map((article) => toArticleWithFeed(article, cats)));
+        try {
+          const statusResponse = await apiClient.get<IngestJobState>(`${API_BASE_URL}/api/ingest/status`);
+          if (!cancelled && statusResponse.data.status === "running") {
+            setRefreshing(true);
+            setMessage(statusResponse.data.message || "Article refresh started. This can take a while.");
+          }
+        } catch (statusErr) {
+          console.error("Ingest status error:", statusErr);
+        }
       } catch (err) {
         if (!cancelled) {
           if (axios.isAxiosError(err) && err.response?.status === 401) {
@@ -170,26 +220,48 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!refreshing) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadIngestStatus(categories, selectedCategoryId);
+    }, 3000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [refreshing, categories, selectedCategoryId]);
+
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategoryId(categoryId);
     void loadArticles(categoryId, categories);
   };
 
 const handleRefresh = async () => {
-  setRefreshing(true);
   setMessage("");
   setError("");
 
   try {
-    const response = await axios.post(`${API_BASE_URL}/api/ingest/`, {}, { withCredentials: true });
-    setMessage(response.data?.message || "Articles refreshed");
-    window.location.reload();
+    const response = await apiClient.post<IngestJobState>(`${API_BASE_URL}/api/ingest/`, {});
+    setRefreshing(response.data.status === "running");
+    setMessage(response.data.message || "Article refresh started. This can take a while.");
+    if (response.data.status === "completed") {
+      await loadArticles(selectedCategoryId, categories);
+    }
   } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response?.status === 409) {
+      const status = err.response.data as IngestJobState;
+      setRefreshing(status.status === "running");
+      setMessage(status.message || "Article refresh started. This can take a while.");
+      setError("");
+      return;
+    }
+    setRefreshing(false);
     const errMsg = axios.isAxiosError(err) ? err.response?.data?.error || err.response?.data?.message || "Failed to refresh articles" : "Failed to refresh articles";
     setError(errMsg);
     console.error("Refresh Error:", err);
-  } finally {
-    setRefreshing(false);
   }
 };
 
@@ -263,6 +335,8 @@ const openArticle = async (article: Article) => {
         <header className="home-header">
           <div className="home-header-top">
             <h1 className="home-title">Todd&apos;s Times</h1>
+
+            <h2 className="home-content font-cursive">Democracy dies in Dark place .. or sum dumbshit like that</h2>
             <div className="home-header-actions">
               <ThemeToggle />
               <button onClick={() => setShowSettings(true)} className="btn btn-ghost">
@@ -372,43 +446,42 @@ const openArticle = async (article: Article) => {
 
   onClick={() => { setSelectedArticle(null); setParsedContent(null); setParseError(""); }}
   aria-hidden="false"
-  className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto overflow-x-hidden bg-black/70 p-4 backdrop-blur-md"
+  className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto overflow-x-hidden bg-black/70 p-2 backdrop-blur-md sm:items-center sm:p-4"
 >
-  <div className="relative w-full max-w-7xl max-h-full">
-    <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-neutral-950/95 p-5 text-white shadow-2xl md:p-7">
-      <div className="flex items-start justify-between gap-3 border-b border-white/10 pb-4 md:pb-5">
-        <h3 className="pr-2 text-lg font-semibold tracking-tight text-white sm:pr-8 sm:text-xl">
+  <div className="relative my-2 w-full max-w-7xl sm:my-6">
+    <button
+      type="button"
+      onClick={() => { setSelectedArticle(null); setParsedContent(null); setParseError(""); }}
+      className="btn btn-ghost-light absolute right-0 top-0 z-10 h-9 w-9 -translate-y-1/2 p-0 sm:right-4 sm:top-4 sm:h-10 sm:w-10 sm:translate-y-0"
+    >
+      <svg
+        className="h-4 w-4 sm:h-5 sm:w-5"
+        aria-hidden="true"
+        xmlns="http://www.w3.org/2000/svg"
+        width="24"
+        height="24"
+        fill="none"
+        viewBox="0 0 24 24"
+      >
+        <path
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="2"
+          d="M6 18 17.94 6M18 18 6.06 6"
+        />
+      </svg>
+
+      <span className="sr-only">Close modal</span>
+    </button>
+    <div className="modal-panel relative max-h-[calc(100vh-1rem)] overflow-hidden rounded-3xl border px-3 py-3 shadow-2xl sm:max-h-[calc(100vh-3rem)] sm:p-5 md:p-7">
+      <div className="border-b border-current/15 pb-3 sm:pb-4 md:pb-5">
+        <h3 className="min-w-0 pr-8 text-base font-semibold leading-6 tracking-tight sm:pr-12 sm:text-xl sm:leading-7">
           {selectedArticle.title}
         </h3>
-
-        <button
-          type="button"
-          onClick={() => { setSelectedArticle(null); setParsedContent(null); setParseError(""); }}
-          className="btn btn-ghost-light h-10 w-10 shrink-0 p-0"
-        >
-          <svg
-            className="h-5 w-5"
-            aria-hidden="true"
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke="currentColor"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="M6 18 17.94 6M18 18 6.06 6"
-            />
-          </svg>
-
-          <span className="sr-only">Close modal</span>
-        </button>
       </div>
 
-      <div className="space-y-5 py-5 md:space-y-6 md:py-6">
+      <div className="max-h-[calc(100vh-10rem)] space-y-4 overflow-y-auto py-4 pr-1 sm:max-h-[calc(100vh-11rem)] sm:space-y-5 sm:py-5 md:max-h-[calc(100vh-14rem)] md:space-y-6 md:py-6">
         {(() => {
           const allImages = [
             ...(Array.isArray(selectedArticle.photos) ? selectedArticle.photos : []),
@@ -424,23 +497,29 @@ const openArticle = async (article: Article) => {
             <img
               src={best}
               alt={selectedArticle.title}
-              className="max-h-96 w-full rounded-2xl border border-white/10 object-contain"
+              className="max-h-96 w-full rounded-2xl border border-current/15 object-contain"
             />
           );
         })()}
 
-        <p className="text-sm font-medium uppercase tracking-wide text-gray-400">
+        <p className="text-sm font-medium uppercase tracking-wide text-current/70">
           {selectedArticle.source}
         </p>
                 {(selectedArticle.author || selectedArticle.feed?.title || selectedArticle.feed_title) && (
-              <div className="flex flex-wrap gap-2 text-xs text-gray-400">
+              <div className="flex flex-wrap gap-2 text-xs text-current/70">
                 {selectedArticle.author && (
-              <span className="rounded-full border border-white/10 px-3 py-1">
+              <span className="rounded-full border border-current/15 px-3 py-1">
                 {selectedArticle.author}
               </span>
             )}
+
+                {selectedArticle.date && (
+              <span className="rounded-full border border-current/15 px-3 py-1">
+            {selectedArticle.date ? new Date(selectedArticle.date * 1000).toLocaleDateString() : ""}
+              </span>
+            )}
             {(selectedArticle.feed?.title || selectedArticle.feed_title) && (
-              <span className="rounded-full border border-white/10 px-3 py-1">
+              <span className="rounded-full border border-current/15 px-3 py-1">
                 {selectedArticle.feed?.title || selectedArticle.feed_title}
               </span>
             )}
@@ -448,7 +527,7 @@ const openArticle = async (article: Article) => {
         )}
 
       {parsing && (
-        <p className="text-center text-gray-400">Parsing article...</p>
+        <p className="text-center text-current/70">Parsing article...</p>
       )}
 
       {parseError && (
@@ -457,21 +536,21 @@ const openArticle = async (article: Article) => {
 
       {parsedContent?.content_html ? (
         <div
-          className="prose prose-invert max-w-none leading-8 text-gray-200"
+          className="prose max-w-none leading-8"
           dangerouslySetInnerHTML={{ __html: parsedContent.content_html }}
         />
       ) : (
         !parsing && !parseError && (
           (Array.isArray(selectedArticle.content) ? selectedArticle.content : []).map(
             (paragraph: string, idx: number) => (
-              <p className="leading-8 text-gray-200" key={idx}>{paragraph}</p>
+              <p className="leading-8" key={idx}>{paragraph}</p>
             )
           )
         )
       )}
       </div>
 
-      <div className="flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:items-center sm:gap-4 md:pt-5">
+      <div className="flex flex-col gap-3 border-t border-current/15 pt-4 sm:flex-row sm:items-center sm:gap-4 md:pt-5">
         {selectedArticle.url && (
           <button
             type="button"

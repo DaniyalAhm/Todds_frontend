@@ -1,15 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import axios from "axios";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 
 type Article = {
   title: string;
   summary: string;
   source: string;
+  date?: number;
   content?: string[];
   thumbnail?: string;
   url?: string;
@@ -26,7 +26,7 @@ export default function ArticlePage() {
   useEffect(() => {
     const fetchArticle = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api_fetch`);
+        const response = await apiClient.get(`${API_BASE_URL}/api_fetch`);
 
         const selectedArticle = response.data[id];
 

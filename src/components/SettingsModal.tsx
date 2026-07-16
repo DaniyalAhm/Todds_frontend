@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from 'axios'
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 type FeedType = "rss";
 
 type RssFeed = {
@@ -54,7 +54,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const fetchApi = useCallback(async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/get_user/`, { withCredentials: true });
+      const response = await apiClient.get(`${API_BASE_URL}/api/get_user/`);
       const freshCategories: Category[] = response.data.data.categories;
       setData(response.data);
       setCategories(freshCategories);
@@ -78,7 +78,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   const checkRsshubHealth = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/rsshub/health`);
+      const response = await apiClient.get(`${API_BASE_URL}/api/rsshub/health`);
       setRsshubHealth(response.data.status === "ok" ? "Online" : "Error");
     } catch {
       setRsshubHealth("Unreachable");
@@ -108,7 +108,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     if (!data?.data?.id) return;
     const id = `${data.data.id}-${trimmed}-${Date.now()}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     try {
-      await axios.post(`${API_BASE_URL}/api/add_categories`, { category: { id, name: trimmed, feeds: [] } }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/add_categories`, { category: { id, name: trimmed, feeds: [] } });
       setMessage("Category added");
       setNewCategory("");
     } catch (error: unknown) {
@@ -121,7 +121,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     setMessage("");
     setError("");
     try {
-      await axios.post(`${API_BASE_URL}/api/remove_category`, { category_id: categoryId }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/remove_category`, { category_id: categoryId });
       setMessage("Category removed");
       if (selectedCategoryId === categoryId) {
         setSelectedCategoryId(null);
@@ -142,7 +142,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     setError("");
     const feed: RssFeed = { id: makeId(`${title}-${Date.now()}`), title, url, type: "rss", source_kind: "direct" };
     try {
-      await axios.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed });
       setMessage("Feed added");
       setNewFeedTitle("");
       setNewFeedUrl("");
@@ -156,7 +156,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     setMessage("");
     setError("");
     try {
-      await axios.post(`${API_BASE_URL}/api/remove_feed`, { category_id: categoryId, feed }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/remove_feed`, { category_id: categoryId, feed });
       setMessage("Feed removed");
     } catch (error: unknown) {
       setError(axios.isAxiosError(error) ? error.response?.data?.error || "Failed" : "Failed");
@@ -170,7 +170,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     setRsshubResolving(true);
     setRsshubResult(null);
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/rsshub/resolve`, { route, name: rsshubName.trim() });
+      const response = await apiClient.post(`${API_BASE_URL}/api/rsshub/resolve`, { route, name: rsshubName.trim() });
       setRsshubResult(response.data);
     } catch {
       setRsshubResult({ status: "error", message: "Could not reach RSSHUB" });
@@ -184,7 +184,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     const title = rsshubName.trim() || rsshubResult.title || rsshubRoute.replace(/^\/+/, "").replace(/[-/]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
     const feed: RssFeed = { id: makeId(`${title}-${Date.now()}`), title, url: rsshubResult.url, type: "rss", source_kind: "rsshub", route: rsshubResult.route || rsshubRoute.trim().replace(/^\/+/, "") };
     try {
-      await axios.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed });
       setMessage("Feed added");
       setRsshubName("");
       setRsshubRoute("");
@@ -199,12 +199,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-md"
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-2 backdrop-blur-md sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative my-4 w-full max-w-6xl sm:my-8">
-        <div className="relative overflow-hidden rounded-3xl border border-white/15 bg-neutral-950/95 p-4 text-white shadow-2xl sm:p-5 md:p-7">
-          <div className="flex items-center justify-between border-b border-white/10 pb-4 md:pb-5">
+      <div className="relative my-2 w-full max-w-6xl sm:my-8">
+        <div className="modal-panel relative max-h-[calc(100vh-1rem)] overflow-hidden rounded-3xl border p-3 shadow-2xl sm:max-h-[calc(100vh-3rem)] sm:p-5 md:p-7">
+          <div className="flex items-center justify-between border-b border-current/15 pb-4 md:pb-5">
             <h2 className="text-2xl font-bold">Settings</h2>
             <button
               type="button"
@@ -224,17 +224,18 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-5 py-3 text-sm text-red-300">{error}</div>
           )}
 
-          <div className="mt-6 grid gap-6 lg:grid-cols-[360px_1fr] lg:gap-8">
-            <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl">
-              <div className="mb-6 rounded-2xl border border-white/10 bg-black/30 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-white/40">Account</p>
+          <div className="modal-scroll mt-6 max-h-[calc(100vh-8rem)] overflow-y-auto pr-1 sm:max-h-[calc(100vh-10rem)]">
+            <div className="grid gap-4 lg:grid-cols-[360px_1fr] lg:gap-8">
+            <section className="modal-section rounded-3xl border p-4 shadow-2xl sm:p-6">
+              <div className="modal-subsection mb-6 rounded-2xl border p-4">
+                <p className="modal-faint text-xs font-semibold uppercase tracking-wide">Account</p>
                 <p className="mt-2 text-lg font-semibold">{data?.data?.name || "User"}</p>
-                <p className="mt-1 break-all text-xs text-white/40">/{data?.data?.public_id}</p>
+                <p className="modal-faint mt-1 break-all text-xs">/{data?.data?.public_id}</p>
               </div>
 
               <div className="mb-6">
                 <h2 className="text-2xl font-bold">Categories</h2>
-                <p className="mt-1 text-sm text-white/50">Each category belongs to this user.</p>
+                <p className="modal-muted mt-1 text-sm">Each category belongs to this user.</p>
               </div>
 
               <div className="flex flex-col gap-3">
@@ -243,7 +244,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   onChange={(e) => setNewCategory(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") addCategory(); }}
                   placeholder="Example: Tech"
-                  className="rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
+                  className="modal-subsection modal-input rounded-2xl px-4 py-3"
                 />
                 <button onClick={addCategory} className="btn btn-solid-light w-full">
                   Add Category
@@ -252,7 +253,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
 
               <div className="mt-8 space-y-3">
                 {categories.length === 0 && (
-                  <div className="rounded-2xl border border-dashed border-white/15 bg-black/30 p-6 text-sm text-white/50">No categories yet.</div>
+                  <div className="modal-subsection modal-muted rounded-2xl border border-dashed p-6 text-sm">No categories yet.</div>
                 )}
                 {categories.map((category) => (
                   <button
@@ -260,14 +261,14 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                     onClick={() => { setSelectedCategoryId(category.id); setSelectedCategory(category); }}
                     className={`w-full rounded-2xl border px-5 py-4 text-left transition ${
                       selectedCategoryId === category.id
-                        ? "border-white bg-white text-black"
-                        : "border-white/10 bg-black/40 text-white hover:bg-white/10"
+                        ? "border-pink-500 bg-pink-200 text-black"
+                        : "modal-subsection text-inherit hover:bg-white/10 dark:hover:bg-black/5"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="font-semibold">{category.name}</p>
-                        <p className={`text-xs ${selectedCategoryId === category.id ? "text-black/60" : "text-white/40"}`}>
+                        <p className={`text-xs ${selectedCategoryId === category.id ? "text-black/60" : "modal-faint"}`}>
                           {category.feeds?.length} feed{category.feeds?.length === 1 ? "" : "s"}
                         </p>
                       </div>
@@ -277,12 +278,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl">
+            <section className="modal-section rounded-3xl border p-4 shadow-2xl sm:p-6">
               {!selectedCategory && (
-                <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-white/15 bg-black/30 p-8 text-center">
+                <div className="modal-subsection flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed p-8 text-center">
                   <div>
                     <h2 className="text-2xl font-bold">Select a category</h2>
-                    <p className="mt-2 text-white/50">Choose a category on the left to manage its RSS feeds.</p>
+                    <p className="modal-muted mt-2 text-sm">Choose a category on the left to manage its RSS feeds.</p>
                   </div>
                 </div>
               )}
@@ -292,50 +293,50 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <h2 className="text-2xl font-bold">{selectedCategory.name}</h2>
-                      <p className="mt-1 text-sm text-white/50">Manage RSS feeds for this category.</p>
+                      <p className="modal-muted mt-1 text-sm">Manage RSS feeds for this category.</p>
                     </div>
                     <button onClick={() => void deleteCategory(selectedCategory.id)} className="btn btn-danger-ghost">
                       Delete Category
                     </button>
                   </div>
 
-                  <div className="rounded-2xl border border-white/10 bg-black/30 p-5">
+                  <div className="modal-subsection rounded-2xl border p-5">
                     <h3 className="mb-4 text-lg font-semibold">Add Feed Source</h3>
                     <div className="grid gap-3">
                       <input value={newFeedTitle} onChange={(e) => setNewFeedTitle(e.target.value)}
                         placeholder="Feed title, example: NYT Technology"
-                        className="rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60" />
+                        className="modal-subsection modal-input rounded-2xl px-4 py-3" />
                       <input value={newFeedUrl} onChange={(e) => setNewFeedUrl(e.target.value)}
                         onKeyDown={(e) => { if (e.key === "Enter") addFeedToCategory(); }}
                         placeholder="RSS URL, example: https://example.com/feed.xml"
-                        className="rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60" />
+                        className="modal-subsection modal-input rounded-2xl px-4 py-3" />
                       <button onClick={addFeedToCategory} className="btn btn-solid-light">
                         Add RSS to {selectedCategory.name}
                       </button>
                     </div>
                   </div>
 
-                  <div className="mt-6 rounded-2xl border border-white/10 bg-black/30 p-5">
+                  <div className="modal-subsection mt-6 rounded-2xl border p-5">
                     <button onClick={() => setShowRsshub(!showRsshub)} className="flex w-full items-center justify-between">
                       <h3 className="text-lg font-semibold">RSSHUB Feeds</h3>
-                      <span className="text-white/50">{showRsshub ? "▲" : "▼"}{rsshubHealth && ` (${rsshubHealth})`}</span>
+                      <span className="modal-muted">{showRsshub ? "▲" : "▼"}{rsshubHealth && ` (${rsshubHealth})`}</span>
                     </button>
                     {showRsshub && (
                       <div className="mt-4">
-                        <p className="mb-3 text-sm text-white/50">
+                        <p className="modal-muted mb-3 text-sm">
                           RSSHUB generates RSS feeds from websites that don&apos;t have native RSS. Enter a route path to add it.
                         </p>
                       <div className="flex flex-col gap-2 sm:flex-row">
                         <input value={rsshubName} onChange={(e) => setRsshubName(e.target.value)}
                           placeholder="Feed name, example: NYT World via RSSHub"
-                          className="flex-1 rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60"
+                          className="modal-subsection modal-input flex-1 rounded-2xl px-4 py-3"
                         />
                       </div>
                       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                         <input value={rsshubRoute} onChange={(e) => setRsshubRoute(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") resolveRsshubRoute(); }}
                             placeholder="/nytimes, /bbc, /hackernews"
-                            className="flex-1 rounded-2xl border border-white/15 bg-black/50 px-4 py-3 text-white outline-none placeholder:text-white/35 focus:border-white/60" />
+                            className="modal-subsection modal-input flex-1 rounded-2xl px-4 py-3" />
                           <button onClick={resolveRsshubRoute} disabled={rsshubResolving} className="btn btn-solid-light w-full sm:w-auto">
                             {rsshubResolving ? "..." : "Resolve"}
                           </button>
@@ -358,9 +359,9 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                             )}
                           </div>
                         )}
-                        <p className="mt-4 text-xs text-white/30">
+                        <p className="modal-faint mt-4 text-xs">
                           Discover routes at{" "}
-                          <a href="https://docs.rsshub.app" target="_blank" rel="noopener noreferrer" className="text-white/50 underline">docs.rsshub.app</a>
+                          <a href="https://docs.rsshub.app" target="_blank" rel="noopener noreferrer" className="modal-link">docs.rsshub.app</a>
                         </p>
                       </div>
                     )}
@@ -369,18 +370,18 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                   <div className="mt-8">
                     <h3 className="mb-4 text-lg font-semibold">Feed Sources</h3>
                     {selectedCategory.feeds.length === 0 && (
-                      <div className="rounded-2xl border border-dashed border-white/15 bg-black/30 p-6 text-sm text-white/50">No feed sources yet.</div>
+                      <div className="modal-subsection modal-muted rounded-2xl border border-dashed p-6 text-sm">No feed sources yet.</div>
                     )}
                     <div className="space-y-3">
                       {selectedCategory.feeds.map((feed) => (
-                        <div key={feed.id} className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div key={feed.id} className="modal-subsection flex flex-col gap-3 rounded-2xl border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <p className="font-semibold">{feed.title}</p>
-                            <p className="mt-1 text-[0.7rem] font-bold uppercase tracking-wide text-white/35">
+                            <p className="modal-faint mt-1 text-[0.7rem] font-bold uppercase tracking-wide">
                               {feed.source_kind === "rsshub" ? "RSSHUB" : "RSS"}
                             </p>
-                            {feed.route && <p className="truncate text-xs text-white/30">/{feed.route}</p>}
-                            <p className="truncate text-xs text-white/40">{feed.url}</p>
+                            {feed.route && <p className="modal-faint truncate text-xs">/{feed.route}</p>}
+                            <p className="modal-muted truncate text-xs">{feed.url}</p>
                           </div>
                           <button onClick={() => removeFeedFromCategory(selectedCategory.id, feed)} className="btn btn-danger-ghost">
                             Remove
@@ -392,6 +393,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
                 </>
               )}
             </section>
+            </div>
           </div>
         </div>
       </div>

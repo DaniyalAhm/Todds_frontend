@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import axios from "axios";
 import { useRouter } from "next/navigation";
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL, setCsrfToken, refreshCsrfToken } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function Auth(){
@@ -19,11 +18,12 @@ export default function Auth(){
   const [messageType, setMessageType] = useState<"success" | "error">("success")
   const [isLoading, setIsLoading] = useState(false)
 
-  // Check setup status on component mount
+  // Check setup status and fetch CSRF token on component mount
   useEffect(() => {
+    refreshCsrfToken();
     const checkSetupStatus = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/first-time-setup-required`);
+        const response = await apiClient.get(`${API_BASE_URL}/api/first-time-setup-required`);
         if (response.data.first_time_setup_required) {
           router.push("/first-time-setup");
         }
@@ -50,29 +50,31 @@ export default function Auth(){
     try {
       const sanitizedUsername = sanitizeTextInput(username);
       
-      const response = await axios.post(`${API_BASE_URL}/api/login`, {
+      const response = await apiClient.post(`${API_BASE_URL}/api/login`, {
         username: sanitizedUsername,
         password,
-      }, { withCredentials: true });
+      });
+
+      if (response.data.csrf_token) {
+        setCsrfToken(response.data.csrf_token);
+      }
 
       setMessageType("success")
       setMessage(response.data.message || "Signed in successfully");
       
       if (response.data.redirect) {
-        // Redirect to first-time setup, this should not happen in normal flow as 
-        // the user would've been redirected already
         router.push("/first-time-setup");
         return;
       }
       
       router.push(`/users/${response.data.user.public_id}`);
     } catch (error: unknown) {
-      const responseData = axios.isAxiosError(error) ? error.response?.data : null;
+      const responseData = error && typeof error === 'object' && 'response' in error
+        ? (error as { response?: { data?: Record<string, string> } }).response?.data
+        : null;
       setMessageType("error")
       setMessage(
-        responseData?.error ||
-          responseData?.details ||
-          "Sign in failed"
+        responseData?.error || responseData?.details || "Sign in failed"
       );
     } finally {
       setIsLoading(false);
@@ -84,7 +86,6 @@ export default function Auth(){
     setIsLoading(true);
     setMessage("")
 
-    // Validate passwords match
     if (signupPassword !== signupConfirmPassword) {
       setMessageType("error")
       setMessage("Passwords do not match")
@@ -97,23 +98,23 @@ export default function Auth(){
       const sanitizedEmail = sanitizeTextInput(email);
       const sanitizedSignupUsername = sanitizeTextInput(signupUsername);
       
-      const response = await axios.post(`${API_BASE_URL}/api/create_user`, {
+      const response = await apiClient.post(`${API_BASE_URL}/api/create_user`, {
         name: sanitizedName,
         email: sanitizedEmail,
         username: sanitizedSignupUsername,
         password: signupPassword,
         confirmPassword: signupConfirmPassword,
-      }, { withCredentials: true });
+      });
 
       setMessageType("success")
       setMessage(response.data.message || "Account created successfully");
     } catch (error: unknown) {
-      const responseData = axios.isAxiosError(error) ? error.response?.data : null;
+      const responseData = error && typeof error === 'object' && 'response' in error
+        ? (error as { response?: { data?: Record<string, string> } }).response?.data
+        : null;
       setMessageType("error")
       setMessage(
-        responseData?.error ||
-          responseData?.details ||
-          "Sign up failed"
+        responseData?.error || responseData?.details || "Sign up failed"
       );
     } finally {
       setIsLoading(false);

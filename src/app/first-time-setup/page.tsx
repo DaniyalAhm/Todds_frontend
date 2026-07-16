@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 import ThemeToggle from "@/components/ThemeToggle";
 
 export default function FirstTimeSetup() {
@@ -21,7 +21,7 @@ export default function FirstTimeSetup() {
   useEffect(() => {
     const checkSetupStatus = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/first-time-setup-required`);
+        const response = await apiClient.get(`${API_BASE_URL}/api/first-time-setup-required`);
         if (!response.data.first_time_setup_required) {
           // If not first time setup, redirect to login page
           router.push("/auth");
@@ -48,13 +48,13 @@ export default function FirstTimeSetup() {
     }
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/first-time-setup`, {
+      const response = await apiClient.post(`${API_BASE_URL}/api/first-time-setup`, {
         name,
         username,
         password,
         confirmPassword,
         email
-      }, { withCredentials: true });
+      });
 
       setMessageType("success");
       setMessage("First-time setup completed successfully!");

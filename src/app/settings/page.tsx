@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import axios from 'axios'
-import API_BASE_URL from "@/lib/api";
+import apiClient, { API_BASE_URL } from "@/lib/api";
 type FeedType = "rss";
 
 type RssFeed = {
@@ -49,12 +49,7 @@ export default function SettingsPage() {
 
   const fetchApi = useCallback(async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/get_user/`
-          ,{
-
-        withCredentials: true,
-
-          });
+        const response = await apiClient.get(`${API_BASE_URL}/api/get_user/`);
         console.log("GET Success:", response.data);
 
         const freshCategories: Category[] = response.data.data.categories;
@@ -114,8 +109,7 @@ export default function SettingsPage() {
     };
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/add_categories`,   { category: category },
-  { withCredentials: true });
+      const response = await apiClient.post(`${API_BASE_URL}/api/add_categories`,   { category: category });
     setMessage(response.data.message || "Category added successfully");
     setNewCategory("");
     }
@@ -133,7 +127,7 @@ export default function SettingsPage() {
     setMessage("");
     setError("");
     try {
-      await axios.post(`${API_BASE_URL}/api/remove_category`, { category_id: categoryId }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/remove_category`, { category_id: categoryId });
       setMessage("Category removed successfully");
       if (selectedCategoryId === categoryId) {
         setSelectedCategoryId(null);
@@ -166,8 +160,7 @@ export default function SettingsPage() {
     };
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/add_feed`,   { category_id: selectedCategoryId, feed:feed },
-  { withCredentials: true });
+      const response = await apiClient.post(`${API_BASE_URL}/api/add_feed`,   { category_id: selectedCategoryId, feed:feed });
     setMessage(response.data.message || "Feed added successfully");
     setNewFeedTitle("");
     setNewFeedUrl("");
@@ -183,7 +176,7 @@ export default function SettingsPage() {
 
   const checkRsshubHealth = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/rsshub/health`);
+      const response = await apiClient.get(`${API_BASE_URL}/api/rsshub/health`);
       setRsshubHealth(response.data.status === "ok" ? "Online" : "Error");
     } catch {
       setRsshubHealth("Unreachable");
@@ -206,7 +199,7 @@ export default function SettingsPage() {
     setRsshubResolving(true);
     setRsshubResult(null);
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/rsshub/resolve`, { route, name: rsshubName.trim() });
+      const response = await apiClient.post(`${API_BASE_URL}/api/rsshub/resolve`, { route, name: rsshubName.trim() });
       setRsshubResult(response.data);
     } catch {
       setRsshubResult({ status: "error", message: "Could not reach RSSHUB" });
@@ -229,7 +222,7 @@ export default function SettingsPage() {
     };
 
     try {
-      await axios.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed }, { withCredentials: true });
+      await apiClient.post(`${API_BASE_URL}/api/add_feed`, { category_id: selectedCategoryId, feed });
       setMessage("Feed added successfully");
       setRsshubName("");
       setRsshubRoute("");
@@ -246,8 +239,7 @@ export default function SettingsPage() {
     setError("");
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/remove_feed`,   { category_id: categoryId, feed:feed },
-  { withCredentials: true });
+      const response = await apiClient.post(`${API_BASE_URL}/api/remove_feed`,   { category_id: categoryId, feed:feed });
     setMessage(response.data.message || "Feed removed successfully");
     }
      catch (error: unknown) {
