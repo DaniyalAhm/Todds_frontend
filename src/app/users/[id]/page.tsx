@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import axios from "axios";
 import apiClient, { API_BASE_URL, refreshCsrfToken } from "@/lib/api";
@@ -95,45 +95,6 @@ export default function Home() {
   const [progressTotal, setProgressTotal] = useState(0);
   const [progressMessage, setProgressMessage] = useState("");
 
-  const connectProgressSSE = () => {
-    const token = document.cookie
-      .split("; ")
-      .find((row) => row.startsWith("session="))
-      ?.split("=")[1];
-
-    const url = `${API_BASE_URL}/api/ingest/progress`;
-    const es = new EventSource(url, { withCredentials: true });
-
-    es.onmessage = (event) => {
-      const state = JSON.parse(event.data);
-      setRefreshing(state.status === "running");
-      setProgressCurrent(state.progress_current || 0);
-      setProgressTotal(state.progress_total || 0);
-      setProgressMessage(state.progress_message || "");
-
-      if (state.status === "running") {
-        setMessage(state.progress_message || state.message || "");
-      } else if (state.status === "completed") {
-        setMessage(state.message || "Articles refreshed");
-        setError("");
-        es.close();
-        loadArticles(selectedCategoryId, categories);
-      } else if (state.status === "failed") {
-        setError(state.error || state.message || "Failed to refresh articles");
-        es.close();
-      } else if (state.status === "idle") {
-        es.close();
-      }
-    };
-
-    es.onerror = () => {
-      es.close();
-      setRefreshing(false);
-    };
-
-    return es;
-  };
-
   const toArticleWithFeed = (article: Article, userCategories: Category[] = []): Article => {
     if (article.feed?.title) {
       return article;
@@ -169,7 +130,7 @@ export default function Home() {
     return article;
   };
 
-  const loadArticles = async (categoryId?: string, userCategories: Category[] = categories) => {
+  const loadArticles = useCallback(async (categoryId?: string, userCategories: Category[] = categories) => {
     try {
       setLoading(true);
       const params = categoryId && categoryId !== "all" ? { category_id: categoryId } : {};
@@ -182,7 +143,41 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [categories]);
+
+  const connectProgressSSE = useCallback(() => {
+    const url = `${API_BASE_URL}/api/ingest/progress`;
+    const es = new EventSource(url, { withCredentials: true });
+
+    es.onmessage = (event) => {
+      const state = JSON.parse(event.data);
+      setRefreshing(state.status === "running");
+      setProgressCurrent(state.progress_current || 0);
+      setProgressTotal(state.progress_total || 0);
+      setProgressMessage(state.progress_message || "");
+
+      if (state.status === "running") {
+        setMessage(state.progress_message || state.message || "");
+      } else if (state.status === "completed") {
+        setMessage(state.message || "Articles refreshed");
+        setError("");
+        es.close();
+        loadArticles(selectedCategoryId, categories);
+      } else if (state.status === "failed") {
+        setError(state.error || state.message || "Failed to refresh articles");
+        es.close();
+      } else if (state.status === "idle") {
+        es.close();
+      }
+    };
+
+    es.onerror = () => {
+      es.close();
+      setRefreshing(false);
+    };
+
+    return es;
+  }, [loadArticles, categories, selectedCategoryId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -251,7 +246,7 @@ export default function Home() {
     return () => {
       es.close();
     };
-  }, [refreshing]);
+  }, [refreshing, connectProgressSSE]);
 
   const handleCategoryChange = (categoryId: string) => {
     setSelectedCategoryId(categoryId);

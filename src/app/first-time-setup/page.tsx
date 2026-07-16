@@ -48,7 +48,7 @@ export default function FirstTimeSetup() {
     }
 
     try {
-      const response = await apiClient.post(`${API_BASE_URL}/api/first-time-setup`, {
+      await apiClient.post(`${API_BASE_URL}/api/first-time-setup`, {
         name,
         username,
         password,

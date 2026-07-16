@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from "axios";
+import axios, { AxiosInstance } from "axios";
 
 const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "";
 
@@ -14,7 +14,7 @@ try {
   } else {
     console.warn("Invalid protocol for API URL, using empty string");
   }
-} catch (e) {
+} catch {
   console.warn("Invalid API URL format, using empty string");
 }
 
@@ -26,12 +26,11 @@ export async function refreshCsrfToken(): Promise<string> {
       withCredentials: true,
     });
     cachedCsrfToken = response.data?.csrf_token || null;
-  } catch (e) {
-    const errMsg = e instanceof Error ? e.message : String(e);
-    console.warn("Could not fetch CSRF token:", errMsg);
+} catch {
+    console.warn("Could not fetch CSRF token:");
     cachedCsrfToken = null;
   }
-  return cachedCsrfToken;
+  return cachedCsrfToken ?? "";
 }
 
 export function getCsrfToken(): string | null {
@@ -44,7 +43,7 @@ export function setCsrfToken(token: string): void {
 
 const apiClient: AxiosInstance = axios.create();
 
-apiClient.interceptors.request.use((config: AxiosRequestConfig) => {
+apiClient.interceptors.request.use((config) => {
   config.withCredentials = true;
 
   if (config.method && config.method.toUpperCase() !== 'GET' && cachedCsrfToken) {
