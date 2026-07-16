@@ -395,13 +395,12 @@ const openArticle = async (article: Article) => {
 
         <div className="article-grid">
           {data.map((element, index) => {
-            const isWide = index % 3 === 0;
 
             return (
             <article
               key={element.id || index}
               onClick={() => openArticle(element)}
-              className={`article-card${isWide ? " article-card--wide" : ""}`}
+              className={`article-card`}
             >
                 {(() => {
                   const cardImages = [
